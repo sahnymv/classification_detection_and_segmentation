@@ -45,12 +45,13 @@ $$P(Object) \cdot IOU^{gt}_{pred}$$
 ### Loss
 $$
 \lambda_{coord} \sum^{S^{2}}_{i = 0} \sum^{B}_{j = 0} \mathbb{1}^{obj}_{ij} \bigg[(x_{i} - \hat{x}_{i})^{2} + (y_{i} - \hat{y}_{i})^{2} + (\sqrt{w_{i}} - \sqrt{\hat{w}_{i}})^{2} + (\sqrt{h_{i}} - \sqrt{\hat{h}_{i}})^{2} + (C_{i} - \hat{C}_{i})^{2}\bigg]
-\\+ \lambda_{noobj} \sum^{S^{2}}_{i = 0} \sum^{B}_{j = 0} \big(C_{i} - \hat{C}_{i}\big)^{2}
+\\+ \lambda_{noobj} \sum^{S^{2}}_{i = 0} \sum^{B}_{j = 0} 1^{noobj}_{ij} \big(C_{i} - \hat{C}_{i}\big)^{2}
 \\+ \sum^{S^{2}}_{i = 0} \mathbb{1}^{obj}_{i} \sum_{c \in classes} \big(p_{i}(c) - \hat{p}_{i}(c)\big)^{2}
 $$
 - We use sum-squared error because it is easy to optimize, however ***it does not perfectly align with our goal of maximizing average precision. It weights localization error equally with classification error which may not be ideal. Also, in every image many grid cells do not contain any object. This pushes the "confidence" scores of those cells towards zero, often overpowering the gradient from cells that do contain objects.*** This can lead to model instability, causing training to diverge early on. To remedy this, ***we increase the loss from bounding box coordinate predictions and decrease the loss from confidence predictions for boxes that don’t contain objects. We use two parameters,*** $\lambda_{coord}$ ***and*** $\lambda_{noobj}$ ***to accomplish this. We set*** $\lambda_{coord} = 5$ ***and*** $\lambda_{noobj} = 0.5$***.***
 - Sum-squared error also equally weights errors in large boxes and small boxes. Our error metric should reflect that small deviations in large boxes matter less than in small boxes. To partially address this we predict the square root of the bounding box width and height instead of the width and height directly. At training time we only want one bounding box predictor to be responsible for each object. We assign one predictor to be "responsible" for predicting an object based on which prediction has the highest current IOU with the ground truth. This leads to specialization between the bounding box predictors. Each predictor gets better at predicting certain sizes, aspect ratios, or classes of object, improving overall recall. During training we optimize the following, multi-part
-- $\mathbb{1}^{obj}_{i}$ ***denotes if object appears in cell*** $i$ ***and*** $\mathbb{1}^{obj}_{ij}$ ***denotes that the*** $j$th ***bounding box predictor in cell*** $i$ ***is "responsible" for that prediction.***
+- $\mathbb{1}^{obj}_{i}$: ***Denotes if object appears in cell*** $i$
+- $\mathbb{1}^{obj}_{ij}$: ***Denotes that the*** $j$ th ***bounding box predictor in cell*** $i$ ***is "responsible" for that prediction.***
 - ***Note that the loss function only penalizes classification error if an object is present in that grid cell. It also only penalizes bounding box coordinate error if that predictor is "responsible" for the ground truth box (i.e. has the highest IOU of any predictor in that grid cell).***
 ## Training
 ### Pre-training

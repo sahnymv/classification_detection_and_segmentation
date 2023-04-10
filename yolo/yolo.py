@@ -119,6 +119,7 @@ class YOLO(nn.Module):
         x = self.sigmoid(x)
         return x
 
+
 if __name__ == "__main__":
     darknet = Darknet()
     yolo = YOLO(darknet=darknet, n_classes=20)

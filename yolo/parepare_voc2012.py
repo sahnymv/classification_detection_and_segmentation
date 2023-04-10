@@ -6,6 +6,11 @@ from PIL import Image, ImageDraw
 import xml.etree.ElementTree as et
 import extcolors
 
+VOC_CLASSES = ['background', 'aeroplane', 'bicycle', 'bird', 'boat',
+            'bottle', 'bus', 'car', 'cat', 'chair', 'cow',
+            'diningtable', 'dog', 'horse', 'motorbike', 'person',
+            'potted plant', 'sheep', 'sofa', 'train', 'tv/monitor']
+
 
 def load_image(img_path):
     img_path = str(img_path)
@@ -36,22 +41,23 @@ def parse_voc2012_xml_file(xml_path):
     xroot = xtree.getroot()
     bboxes = pd.DataFrame(
         [
-            [int(coord.text) for coord in label.find("bndbox")] + [label.find("name").text]
+            [int(coord.text) for coord in label.find("bndbox")] + [VOC_CLASSES.index(label.find("name").text)]
             for label
             in xroot
             if label.tag == "object"
         ],
-        columns=("xmin", "ymin", "xmax", "ymax", "label")
+        columns=("x1", "y1", "x2", "y2", "label")
     )
+    # bboxes["label"] = bboxes["label"].apply(lambda x: VOC_CLASSES.index(x))
     return bboxes
 
 
 def draw_bboxes(img, bboxes):
     img_pil = _convert_to_pil(img)
     draw = ImageDraw.Draw(img_pil)
-    for xmin, ymin, xmax, ymax in bboxes[["xmin", "ymin", "xmax", "ymax"]].values:
+    for x1, y1, x2, y2 in bboxes[["x1", "y1", "x2", "y2"]].values:
         draw.rectangle(
-            xy=(xmin, ymin, xmax, ymax),
+            xy=(x1, y1, x2, y2),
             outline=(0, 255, 0),
             fill=None,
             width=2
@@ -74,11 +80,11 @@ def get_minimum_area_mask_bounding_rectangle(mask):
     nonzero_x = np.where(bool.any(axis=0))[0]
     nonzero_y = np.where(bool.any(axis=1))[0]
     if len(nonzero_x) != 0 and len(nonzero_y) != 0:
-        xmin = nonzero_x[0]
-        xmax = nonzero_x[-1]
-        ymin = nonzero_y[0]
-        ymax = nonzero_y[-1]
-    return xmin, ymin, xmax, ymax
+        x1 = nonzero_x[0]
+        x2 = nonzero_x[-1]
+        y1 = nonzero_y[0]
+        y2 = nonzero_y[-1]
+    return x1, y1, x2, y2
 
 
 def get_bboxes_from_segmentation_map(seg_map):
@@ -91,7 +97,7 @@ def get_bboxes_from_segmentation_map(seg_map):
         in colors
         if color not in [(0, 0, 0), (224, 224, 192)]
     ]
-    bboxes = pd.DataFrame(ltrbs, columns=("xmin", "ymin", "xmax", "ymax"))
+    bboxes = pd.DataFrame(ltrbs, columns=("x1", "y1", "x2", "y2"))
     return bboxes
 
 
