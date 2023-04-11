@@ -4,39 +4,20 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision
 import torchvision.transforms as T
+from torch.utils.data import Dataset, DataLoader
 import cv2
 import numpy as np
 import pandas as pd
+from pathlib import Path
+from PIL import Image
+
+
 from yolo import Darknet, YOLO
 from parepare_voc2012 import parse_voc2012_xml_file
 
 np.set_printoptions(precision=3, suppress=True)
-
-
-def get_whether_each_predictor_responsible_for_prediction(gt):
-    is_resp = torch.stack([gt[:, 4, ...], gt[:, 9, ...]], dim=1)
-    return is_resp
-
-
-def get_whether_object_appear_in_each_cell(is_resp):
-    appears = torch.max(is_resp, dim=1)[0]
-    return appears
-
-
-def denormalize_array(img, mean=(0.485, 0.456, 0.406), variance=(0.229, 0.224, 0.225)):
-    copied_img = img.copy()
-    copied_img *= variance
-    copied_img += mean
-    copied_img *= 255.0
-    copied_img = np.clip(a=copied_img, a_min=0, a_max=255).astype("uint8")
-    return copied_img
-
-
-def convert_tensor_to_array(tensor):
-    copied_tensor = tensor.clone().squeeze().permute((1, 2, 0)).detach().cpu().numpy()
-    copied_tensor = denormalize_array(copied_tensor)
-    return copied_tensor
 
 
 def resize_image(img, w, h):
@@ -122,6 +103,16 @@ def tensor_to_array(image, mean=(0.485, 0.456, 0.406), variance=(0.229, 0.224, 0
     return img
 
 
+def get_whether_each_predictor_responsible_for_prediction(gt):
+    is_resp = torch.stack([gt[:, 4, ...], gt[:, 9, ...]], dim=1)
+    return is_resp
+
+
+def get_whether_object_appear_in_each_cell(is_resp):
+    appears = torch.max(is_resp, dim=1)[0]
+    return appears
+
+
 class Yolov1Loss(nn.Module):
     def __init__(self, lamb_coord=5, lamb_noobj = 0.5):
         super().__init__()
@@ -150,6 +141,7 @@ class Yolov1Loss(nn.Module):
         return mse.sum().item()
 
 
+
 if __name__ == "__main__":
     bboxes = parse_voc2012_xml_file("/Users/jongbeomkim/Downloads/VOCdevkit/VOC2012/Annotations/2007_000032.xml")
     bboxes = normalize_bounding_boxes_coordinats(bboxes)
@@ -158,32 +150,36 @@ if __name__ == "__main__":
 
     img = load_image("/Users/jongbeomkim/Downloads/VOCdevkit/VOC2012/JPEGImages/2007_000032.jpg")
     h, w, _ = img.shape
-    class Transform(object):
-        # def __init__(self):
+    
+    
+    
+    transform = Transform()
+    ds = VOC2012Dataset(root="/Users/jongbeomkim/Downloads/VOCdevkit/VOC2012/JPEGImages", transform=transform)
+    dl = DataLoader(dataset=ds, batch_size=8, shuffle=True, drop_last=True)
+    for batch, image in enumerate(dl, start=1):
+        image.shape
 
-        def __call__(self, image):
-            h, w, _ = image.shape
-            transform = T.Compose(
-                [
-                    T.ToTensor(),
-                    # T.Resize(448),
-                    # T.CenterCrop(448),
-                    T.CenterCrop(max(h, w)),
-                    T.Normalize(
-                        mean=[0.485, 0.456, 0.406],
-                        std=[0.229, 0.224, 0.225]
-                    )
-                ]
-            )
-            x = transform(image)
-            return x
-    image = tranform(img).unsqueeze(0)
-    arr = tensor_to_array(image)
+    arr = batched_image_to_grid(image=image, n_cols=4, normalize=True)
     show_image(arr)
+    
+
+    image = transform(img).unsqueeze(0)
+    
 
     darknet = Darknet()
     yolo = YOLO(darknet=darknet, n_classes=20)
     pred = yolo(image)
+    pred.shape
+
+
+class_prob_maps = get_class_probability_maps(pred)
+vis = visualize_class_probability_maps(class_prob_maps=class_prob_maps, image=image, idx=3)
+show_image(vis)
+        
+    grid = batched_image_to_grid(image=class_prob_maps, n_cols=4, normalize=True)
+        
+    
+    img
 
     drawn = draw_grids_and_bounding_boxes(img=arr, bboxes=bboxes)
     show_image(drawn)
