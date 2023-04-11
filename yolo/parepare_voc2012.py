@@ -6,10 +6,9 @@ from PIL import Image, ImageDraw
 import xml.etree.ElementTree as et
 import extcolors
 
-VOC_CLASSES = ['background', 'aeroplane', 'bicycle', 'bird', 'boat',
-            'bottle', 'bus', 'car', 'cat', 'chair', 'cow',
-            'diningtable', 'dog', 'horse', 'motorbike', 'person',
-            'potted plant', 'sheep', 'sofa', 'train', 'tv/monitor']
+voc_classes = [
+    "background", "aeroplane", "bicycle", "bird", "boat", "bottle", "bus", "car", "cat", "chair", "cow", "diningtable", "dog", "horse", "motorbike", "person", "potted plant", "sheep", "sofa", "train", "tv/monitor"
+]
 
 
 def load_image(img_path):
@@ -41,14 +40,14 @@ def parse_voc2012_xml_file(xml_path):
     xroot = xtree.getroot()
     bboxes = pd.DataFrame(
         [
-            [int(coord.text) for coord in label.find("bndbox")] + [VOC_CLASSES.index(label.find("name").text)]
+            [int(coord.text) for coord in label.find("bndbox")] + [voc_classes.index(label.find("name").text)]
             for label
             in xroot
             if label.tag == "object"
         ],
         columns=("x1", "y1", "x2", "y2", "label")
     )
-    # bboxes["label"] = bboxes["label"].apply(lambda x: VOC_CLASSES.index(x))
+    # bboxes["label"] = bboxes["label"].apply(lambda x: voc_classes.index(x))
     return bboxes
 
 
@@ -101,23 +100,23 @@ def get_bboxes_from_segmentation_map(seg_map):
     return bboxes
 
 
-filenames = [line.strip() for line in open("/Users/jongbeomkim/Downloads/VOCdevkit/VOC2012/ImageSets/Segmentation/trainval.txt").readlines()]
+# filenames = [line.strip() for line in open("/Users/jongbeomkim/Downloads/VOCdevkit/VOC2012/ImageSets/Segmentation/trainval.txt").readlines()]
 
-img_dir = "/Users/jongbeomkim/Downloads/VOCdevkit/VOC2012/JPEGImages"
-seg_map_dir = "/Users/jongbeomkim/Downloads/VOCdevkit/VOC2012/SegmentationObject"
-annot_dir = "/Users/jongbeomkim/Downloads/VOCdevkit/VOC2012/Annotations"
+# img_dir = "/Users/jongbeomkim/Downloads/VOCdevkit/VOC2012/JPEGImages"
+# seg_map_dir = "/Users/jongbeomkim/Downloads/VOCdevkit/VOC2012/SegmentationObject"
+# annot_dir = "/Users/jongbeomkim/Downloads/VOCdevkit/VOC2012/Annotations"
 
-img_dir = Path(img_dir)
-seg_map_dir = Path(seg_map_dir)
-annot_dir = Path(annot_dir)
+# img_dir = Path(img_dir)
+# seg_map_dir = Path(seg_map_dir)
+# annot_dir = Path(annot_dir)
 
 
-for filename in filenames:
-    img = load_image(img_dir/f"""{filename}.jpg""")
-    bboxes = parse_voc2012_xml_file(annot_dir/f"""{filename}.xml""")
-    dr = draw_bboxes(img, bboxes)
-    show_image(dr)
-    # seg_map = load_image(seg_map_dir/f"""{filename}.png""")
+# for filename in filenames:
+#     img = load_image(img_dir/f"""{filename}.jpg""")
+#     bboxes = parse_voc2012_xml_file(annot_dir/f"""{filename}.xml""")
+#     dr = draw_bboxes(img, bboxes)
+#     show_image(dr)
+#     # seg_map = load_image(seg_map_dir/f"""{filename}.png""")
 
-    bboxes
+#     bboxes
 
