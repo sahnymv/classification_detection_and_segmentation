@@ -103,8 +103,19 @@ def tensor_to_array(image, mean=(0.485, 0.456, 0.406), variance=(0.229, 0.224, 0
     return img
 
 
-def get_whether_each_predictor_responsible_for_prediction(gt):
-    is_resp = torch.stack([gt[:, 4, ...], gt[:, 9, ...]], dim=1)
+def get_whether_each_predictor_responsible_for_prediction(pred, n_cells=7, n_bboxes=2, n_classes=20):
+    # is_resp = torch.stack([gt[:, 4, ...], gt[:, 9, ...]], dim=1)
+    # return is_resp
+
+    b, _, _, _ = pred.shape
+    confs = pred[:, (4, 9), ...]
+    argmax = torch.argmax(confs, dim=1)
+    onehot = F.one_hot(argmax, num_classes=2).permute(0, 3, 1, 2)
+    is_resp = torch.concat(
+        [onehot[:, k: k + 1, ...].repeat(1, 5, 1, 1) for k in range(n_bboxes)] +\
+            [torch.ones((b, n_classes, n_cells, n_cells))],
+        dim=1
+    )
     return is_resp
 
 
@@ -141,6 +152,17 @@ class Yolov1Loss(nn.Module):
         return mse.sum().item()
 
 
+    # pred = torch.rand((8, 30, 7, 7))
+
+    # greater_conf_indices = torch.argmax(pred[:, (4, 9), ...], dim=1)
+    # greater_conf_indices * 5
+    # pred[:, (0, 5), ...].shap
+    # # torch.take_along_dim(pred[:, (0, 5), ...], indices=greater_conf_indices, dim=1).shape
+    # torch.stack(
+    #     [torch.take(pred[:, (idx, idx + 5), ...], index=greater_conf_indices) for idx in range(5)], dim=1
+    # )
+
+
 if __name__ == "__main__":
     bboxes = parse_voc2012_xml_file("/Users/jongbeomkim/Downloads/VOCdevkit/VOC2012/Annotations/2007_000032.xml")
     bboxes = normalize_bounding_boxes_coordinats(bboxes)
@@ -149,8 +171,6 @@ if __name__ == "__main__":
 
     img = load_image("/Users/jongbeomkim/Downloads/VOCdevkit/VOC2012/JPEGImages/2007_000032.jpg")
     h, w, _ = img.shape
-    
-    
     
     transform = Transform()
     ds = VOC2012Dataset(root="/Users/jongbeomkim/Downloads/VOCdevkit/VOC2012/JPEGImages", transform=transform)

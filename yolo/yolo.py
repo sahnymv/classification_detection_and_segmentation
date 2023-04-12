@@ -117,9 +117,9 @@ class YOLO(nn.Module):
 
         x = self.linear2(x)
         x = x.view((b, (5 * self.n_bboxes + self.n_classes), self.n_grids, self.n_grids))
-        x = self.sigmoid(x)
+        # x = self.sigmoid(x)
 
-        x[:, 10:, ...] = F.softmax(x[:, 10:, ...], dim=1)
+        # x[:, 10:, ...] = F.softmax(x[:, 10:, ...], dim=1)
         return x
 
 

@@ -1,8 +1,12 @@
+import torch
+import torch.nn.functional as F
 import numpy as np
 from itertools import product
 from PIL import Image, ImageDraw, ImageFont
 import cv2
 import pandas as pd
+
+from loss import get_whether_each_predictor_responsible_for_prediction
 
 
 def _to_pil(img):
@@ -61,34 +65,6 @@ def visualize_class_probability_maps(class_prob_maps, image, idx=0):
     return blended
 
 
-def save_image(img, path):
-    _to_pil(img).save(str(path))
-
-
-img_size=448
-n_grids=7
-grid_size = img_size // n_grids
-
-pred = yolo(image)
-pred =pred.detach().cpu().numpy()
-
-pred[:, 0: 2, ...] *= grid_size
-pred[:, 5: 7, ...] *= grid_size
-pred[:, 0: 2, ...] += np.indices((n_grids, n_grids))[1] * grid_size
-pred[:, 5: 7, ...] += np.indices((n_grids, n_grids))[0] * grid_size
-
-pred[:, 2: 4, ...] *= img_size
-pred[:, 7: 9, ...] *= img_size
-
-idx = 3
-concated = np.concatenate([pred[idx, : 5, ...].reshape(5, -1), pred[idx, 5: 10, ...].reshape(5, -1)], axis=1)
-
-bboxes = pd.DataFrame(concated.T, columns=["x", "y", "w", "h", "c"])
-bboxes[["x", "y", "w", "h"]] = bboxes[["x", "y", "w", "h"]].astype("int")
-canvas = draw_bboxes(image=image, idx=idx, bboxes=bboxes)
-show_image(canvas)
-
-
 def tensor_to_array(image, idx=0, mean=(0.485, 0.456, 0.406), variance=(0.229, 0.224, 0.225)):
     img = image.clone()[idx].permute((1, 2, 0)).detach().cpu().numpy()
     img *= variance
@@ -98,7 +74,7 @@ def tensor_to_array(image, idx=0, mean=(0.485, 0.456, 0.406), variance=(0.229, 0
     return img
 
 
-def draw_bboxes(image, idx, bboxes):
+def draw_bboxes(image, bboxes, idx):
     img = tensor_to_array(image=image, idx=idx)
     canvas = _to_pil(img)
     draw = ImageDraw.Draw(canvas)
@@ -114,10 +90,56 @@ def draw_bboxes(image, idx, bboxes):
     return canvas
 
 
+def draw_predicted_bboxes(pred, image, idx, img_size=448, n_cells=7):
+    is_resp = get_whether_each_predictor_responsible_for_prediction(pred)
+    pred = is_resp * pred
+
+    # x, y
+    cell_size = img_size // n_cells
+    pred[:, 0: 2, ...] *= cell_size
+    pred[:, 5: 7, ...] *= cell_size
+    pred[:, 0: 2, ...] += np.indices((n_cells, n_cells))[1] * cell_size
+    pred[:, 5: 7, ...] += np.indices((n_cells, n_cells))[0] * cell_size
+
+    # w, h
+    pred[:, 2: 4, ...] *= img_size
+    pred[:, 7: 9, ...] *= img_size
+
+    concated = np.concatenate([pred[idx, : 5, ...].reshape(5, -1), pred[idx, 5: 10, ...].reshape(5, -1)], axis=1)
+    bboxes = pd.DataFrame(concated.T, columns=["x", "y", "w", "h", "c"])
+    bboxes[["x", "y", "w", "h"]] = bboxes[["x", "y", "w", "h"]].astype("int")
+
+    canvas = draw_bboxes(image=image, bboxes=bboxes, idx=idx)
+    return canvas
+
+
+def show_image(img):
+    copied_img = img.copy()
+    copied_img = _to_pil(copied_img)
+    copied_img.show()
+
+
+def save_image(img, path):
+    _to_pil(img).save(str(path))
+
+
 if __name__ == "__main__":
+    pred = torch.rand((8, 30, 7, 7))
+    b, _, _, _ = pred.shape
+
     class_prob_maps = get_class_probability_maps(pred)
-    b, _, _, _ = class_prob_maps.shape
     for idx in range(b):
         vis = visualize_class_probability_maps(class_prob_maps=class_prob_maps, image=image, idx=idx)
         show_image(vis)
-        save_image(img=vis, path=f"""/Users/jongbeomkim/Desktop/workspace/segmentation_and_detection/yolo/class_probability_maps/{idx + 1}.jpg""")
+        save_image(
+            img=vis,
+            path=f"""/Users/jongbeomkim/Desktop/workspace/segmentation_and_detection/yolo/class_probability_maps/{idx + 1}.jpg"""
+        )
+
+    for idx in range(b):
+        dr = draw_predicted_bboxes(pred=pred, image=image, idx=idx)
+        show_image(dr)
+        save_image(
+                img=dr,
+                path=f"""/Users/jongbeomkim/Desktop/workspace/segmentation_and_detection/yolo/predicted_bboxes/{idx + 1}.jpg"""
+            )
