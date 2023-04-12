@@ -141,7 +141,6 @@ class Yolov1Loss(nn.Module):
         return mse.sum().item()
 
 
-
 if __name__ == "__main__":
     bboxes = parse_voc2012_xml_file("/Users/jongbeomkim/Downloads/VOCdevkit/VOC2012/Annotations/2007_000032.xml")
     bboxes = normalize_bounding_boxes_coordinats(bboxes)
@@ -159,28 +158,6 @@ if __name__ == "__main__":
     for batch, image in enumerate(dl, start=1):
         image.shape
 
-    arr = batched_image_to_grid(image=image, n_cols=4, normalize=True)
-    show_image(arr)
-    
-
-    image = transform(img).unsqueeze(0)
-    
-
-    darknet = Darknet()
-    yolo = YOLO(darknet=darknet, n_classes=20)
-    pred = yolo(image)
-    pred.shape
-
-
-class_prob_maps = get_class_probability_maps(pred)
-vis = visualize_class_probability_maps(class_prob_maps=class_prob_maps, image=image, idx=3)
-show_image(vis)
-        
-    grid = batched_image_to_grid(image=class_prob_maps, n_cols=4, normalize=True)
-        
-    
-    img
-
-    drawn = draw_grids_and_bounding_boxes(img=arr, bboxes=bboxes)
-    show_image(drawn)
-
+        darknet = Darknet()
+        yolo = YOLO(darknet=darknet, n_classes=20)
+        pred = yolo(image)
