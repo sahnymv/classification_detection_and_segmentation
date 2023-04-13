@@ -47,9 +47,12 @@ def get_class_probability_maps(pred):
     colors = tuple(product(rgb_vals, rgb_vals, rgb_vals))
     palette = colors[0: 1] + colors[7:]
     
-    argmax = pred[:, 10:, ...].argmax(dim=1)
-    np.vectorize(lambda x: palette[x])(argmax)
+    pred = pred.detach().cpu().numpy()
+    argmax = pred[:, 10:, ...].argmax(axis=1)
     class_prob_maps = np.stack(np.vectorize(lambda x: palette[x])(argmax), axis=3).astype("uint8")
+    object_appears = np.logical_or(pred[:, 4, ...] >= 0.5, pred[:, 9, ...] >= 0.5)
+    object_appears = np.repeat(object_appears[..., None], repeats=3, axis=3)
+    class_prob_maps = class_prob_maps * object_appears
     return class_prob_maps
 
 

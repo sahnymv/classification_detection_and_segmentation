@@ -41,59 +41,6 @@ def draw_grids_and_bounding_boxes(img, bboxes, img_size=448, n_grids=7):
     return copied_img
 
 
-def normalize_bounding_boxes_coordinats(bboxes, img_size=448, n_grids=7):
-    copied_bboxes = bboxes.copy()
-
-    copied_bboxes["x"] = copied_bboxes.apply(
-        lambda x: (((x["x1"] + x["x2"]) / 2) % (img_size // n_grids)) / (img_size // n_grids),
-        axis=1
-    )
-    copied_bboxes["y"] = copied_bboxes.apply(
-        lambda x: (((x["y1"] + x["y2"]) / 2) % (img_size // n_grids)) / (img_size // n_grids),
-        axis=1
-    )
-    copied_bboxes["w"] = copied_bboxes.apply(lambda x: (x["x2"] - x["x1"]) / img_size, axis=1)
-    copied_bboxes["h"] = copied_bboxes.apply(lambda x: (x["y2"] - x["y1"]) / img_size, axis=1)
-
-    copied_bboxes["c"] = 1 
-    return copied_bboxes
-
-
-def get_ground_truth(bboxes, img_size=448, n_grids=7):
-    # img_size=448
-    # n_grids=7
-    copied_bboxes = bboxes.copy()
-
-    copied_bboxes["x_grid"] = copied_bboxes.apply(
-        lambda x: int((x["x1"] + x["x2"]) / 2 / (img_size / n_grids)), axis=1
-    )
-    copied_bboxes["y_grid"] = copied_bboxes.apply(
-        lambda x: int((x["y1"] + x["y2"]) / 2 / (img_size / n_grids)), axis=1
-    )
-
-    gt = torch.zeros((30, n_grids, n_grids), dtype=torch.float64)
-    for tup in copied_bboxes.itertuples():
-        _, _, _, _, _, label, x, y, w, h, c, x_grid, y_grid = tup
-
-        if torch.equal(gt[0: 5, y_grid, x_grid], torch.Tensor([0, 0, 0, 0, 0])):
-            gt[0, y_grid, x_grid] = x
-            gt[1, y_grid, x_grid] = y
-            gt[2, y_grid, x_grid] = w ** 0.5
-            gt[3, y_grid, x_grid] = h ** 0.5
-            gt[4, y_grid, x_grid] = c
-            gt[9 + label, y_grid, x_grid] = 1
-        else:
-            if torch.equal(gt[5: 10, y_grid, x_grid], torch.Tensor([0, 0, 0, 0, 0])):
-                gt[5, y_grid, x_grid] = x
-                gt[6, y_grid, x_grid] = y
-                gt[7, y_grid, x_grid] = w ** 0.5
-                gt[8, y_grid, x_grid] = h ** 0.5
-                gt[9, y_grid, x_grid] = c
-            else:
-                continue
-    return gt
-
-
 def tensor_to_array(image, mean=(0.485, 0.456, 0.406), variance=(0.229, 0.224, 0.225)):
     img = image.clone()[0].permute((1, 2, 0)).detach().cpu().numpy()
     img *= variance
