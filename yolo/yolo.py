@@ -98,6 +98,7 @@ class YOLO(nn.Module):
         self.dropout = nn.Dropout(0.5)
 
         self.leakyrelu = nn.LeakyReLU(0.1)
+        self.relu = nn.ReLU()
         self.sigmoid = nn.Sigmoid()
     
     def forward(self, x):
@@ -117,6 +118,7 @@ class YOLO(nn.Module):
 
         x = self.linear2(x)
         x = x.view((b, (5 * self.n_bboxes + self.n_classes), self.n_grids, self.n_grids))
+        x = self.relu(x)
         # x = self.sigmoid(x)
 
         # x[:, 10:, ...] = F.softmax(x[:, 10:, ...], dim=1)
