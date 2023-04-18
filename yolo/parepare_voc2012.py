@@ -32,117 +32,80 @@ def parse_voc2012_xml_file(xml_path, voc_classes=voc_classes):
     xroot = xtree.getroot()
 
     img = load_image(Path(xml_path).parent.parent/"JPEGImages"/xroot.find("filename").text)
-    
-    bboxes = torch.Tensor([
-        [int(coord.text) for coord in obj.find("bndbox")] + [voc_classes.index(obj.find("name").text)]
-        for obj
-        in xroot
-        if obj.tag == "object"
-    ])
+
+    bboxes = pd.DataFrame([
+        (
+            int(bbox.find("bndbox").find("xmin").text),
+            int(bbox.find("bndbox").find("ymin").text),
+            int(bbox.find("bndbox").find("xmax").text),
+            int(bbox.find("bndbox").find("ymax").text),
+            voc_classes.index(xroot.find("object").find("name").text)
+        ) for bbox in xroot.findall("object")
+    ], columns=("x1", "y1", "x2", "y2", "label"))
     return img, bboxes
 
 
-def draw_bboxes(img, bboxes):
-    img_pil = _to_pil(img)
-    draw = ImageDraw.Draw(img_pil)
-    for x1, y1, x2, y2 in bboxes[["x1", "y1", "x2", "y2"]].values:
-        draw.rectangle(
-            xy=(x1, y1, x2, y2),
-            outline=(0, 255, 0),
-            fill=None,
-            width=2
-        )
-    return _to_array(img_pil)
+def _normalize_bboxes_coordinates(bboxes, img, img_size=448):
+    copied = bboxes.copy()
 
-
-def generate_ground_truth(xml_path, img_size=448, n_cells=7):
-    xml_path="/Users/jongbeomkim/Downloads/VOCdevkit/VOC2012/Annotations/2007_000032.xml"
-    img, bboxes = parse_voc2012_xml_file(xml_path)
-    w, h = _get_width_and_height(img)
-    if w >= h:
-        resize_ratio = img_size / w
-        # new_w = round(w * resize_ratio)
-        new_h = round(h * resize_ratio)
+    img_w, img_h = _get_width_and_height(img)
+    if img_w >= img_h:
+        resize_ratio = img_size / img_w
+        new_h = round(img_h * resize_ratio)
         pad = (img_size - new_h) // 2
 
-        # bboxes[["x1", "y1", "x2", "y2"]] *= resize_ratio
-        # bboxes[["y1", "y2"]] += pad
-        bboxes["x1"] = bboxes["x1"].apply(lambda x: round(x * resize_ratio))
-        bboxes["x2"] = bboxes["x2"].apply(lambda x: round(x * resize_ratio))
-        bboxes["y1"] = bboxes["y1"].apply(lambda x: round(x * resize_ratio + pad))
-        bboxes["y2"] = bboxes["y2"].apply(lambda x: round(x * resize_ratio + pad))
+        copied["x1"] = copied["x1"].apply(lambda x: round(x * resize_ratio))
+        copied["x2"] = copied["x2"].apply(lambda x: round(x * resize_ratio))
+        copied["y1"] = copied["y1"].apply(lambda x: round(x * resize_ratio + pad))
+        copied["y2"] = copied["y2"].apply(lambda x: round(x * resize_ratio + pad))
+    else:
+        resize_ratio = img_size / img_h
+        new_w = round(img_w * resize_ratio)
+        pad = (img_size - new_w) // 2
 
-    copied_bboxes = bboxes.copy()
+        copied["x1"] = copied["x1"].apply(lambda x: round(x * resize_ratio + pad))
+        copied["x2"] = copied["x2"].apply(lambda x: round(x * resize_ratio + pad))
+        copied["y1"] = copied["y1"].apply(lambda x: round(x * resize_ratio))
+        copied["y2"] = copied["y2"].apply(lambda x: round(x * resize_ratio))
+    return copied
 
-    copied_bboxes["x"] = copied_bboxes.apply(
-        lambda x: (((x["x1"] + x["x2"]) / 2) % (img_size // n_cells)) / (img_size // n_cells),
+
+def generate_ground_truth(img, bboxes, img_size=448, n_cells=7):
+    copied = bboxes.copy()
+    ### Normalize
+    copied = _normalize_bboxes_coordinates(bboxes=copied, img=img)
+
+    cell_size = img_size // n_cells
+    copied["x"] = copied.apply(
+        lambda x: (((x["x1"] + x["x2"]) / 2) % cell_size) / cell_size,
         axis=1
     )
-    copied_bboxes["y"] = copied_bboxes.apply(
-        lambda x: (((x["y1"] + x["y2"]) / 2) % (img_size // n_cells)) / (img_size // n_cells),
+    copied["y"] = copied.apply(
+        lambda x: (((x["y1"] + x["y2"]) / 2) % cell_size) / cell_size,
         axis=1
     )
-    copied_bboxes["w"] = copied_bboxes.apply(lambda x: (x["x2"] - x["x1"]) / img_size, axis=1)
-    copied_bboxes["h"] = copied_bboxes.apply(lambda x: (x["y2"] - x["y1"]) / img_size, axis=1)
+    copied["w"] = copied.apply(lambda x: (x["x2"] - x["x1"]) / img_size, axis=1)
+    copied["h"] = copied.apply(lambda x: (x["y2"] - x["y1"]) / img_size, axis=1)
 
-    copied_bboxes["c"] = 1
-    copied_bboxes["x_grid"] = copied_bboxes.apply(
-        lambda x: int((x["x1"] + x["x2"]) / 2 / (img_size / n_cells)), axis=1
+    copied["c"] = 1
+    copied["x_grid"] = copied.apply(
+        lambda x: int((x["x1"] + x["x2"]) / 2 / cell_size), axis=1
     )
-    copied_bboxes["y_grid"] = copied_bboxes.apply(
-        lambda x: int((x["y1"] + x["y2"]) / 2 / (img_size / n_cells)), axis=1
+    copied["y_grid"] = copied.apply(
+        lambda x: int((x["y1"] + x["y2"]) / 2 / cell_size), axis=1
     )
-    return copied_bboxes[["x_grid", "y_grid", "x", "y", "w", "h", "c", "obj"]]
 
-    # gt = torch.zeros((30, n_cells, n_cells), dtype=torch.float64)
-    # for tup in copied_bboxes.itertuples():
-    #     _, _, _, _, _, obj, x, y, w, h, c, x_grid, y_grid = tup
+    gt = torch.zeros((30, n_cells, n_cells), dtype=torch.float64)
+    for tup in copied.itertuples():
+        _, _, _, _, _, obj, x, y, w, h, c, x_grid, y_grid = tup
 
-    #     if torch.equal(gt[0: 5, y_grid, x_grid], torch.Tensor([0, 0, 0, 0, 0])):
-    #         gt[0, y_grid, x_grid] = x
-    #         gt[1, y_grid, x_grid] = y
-    #         gt[2, y_grid, x_grid] = w ** 0.5
-    #         gt[3, y_grid, x_grid] = h ** 0.5
-    #         gt[4, y_grid, x_grid] = c
-    #         gt[9 + obj, y_grid, x_grid] = 1
-    # return gt
-        
-
-
-# def exract_all_colors_from_segmentation_map(seg_map):
-#     h, w, _ = seg_map.shape
-#     colors = [
-#         color
-#         for color, _
-#         in extcolors.extract_from_image(img=_to_pil(seg_map), tolerance=0, limit=w * h)[0]
-#     ]
-#     return colors
-
-
-# def get_minimum_area_mask_bounding_rectangle(mask):
-#     bool = (mask != 0)
-#     nonzero_x = np.where(bool.any(axis=0))[0]
-#     nonzero_y = np.where(bool.any(axis=1))[0]
-#     if len(nonzero_x) != 0 and len(nonzero_y) != 0:
-#         x1 = nonzero_x[0]
-#         x2 = nonzero_x[-1]
-#         y1 = nonzero_y[0]
-#         y2 = nonzero_y[-1]
-#     return x1, y1, x2, y2
-
-
-# def get_bboxes_from_segmentation_map(seg_map):
-#     colors = exract_all_colors_from_segmentation_map(seg_map)
-#     ltrbs = [
-#         get_minimum_area_mask_bounding_rectangle(
-#             np.all(seg_map == np.array(color), axis=2)
-#         )
-#         for color
-#         in colors
-#         if color not in [(0, 0, 0), (224, 224, 192)]
-#     ]
-#     bboxes = pd.DataFrame(ltrbs, columns=("x1", "y1", "x2", "y2"))
-#     return bboxes
+        gt[(0, 5), y_grid, x_grid] = x
+        gt[(1, 6), y_grid, x_grid] = y
+        gt[(2, 7), y_grid, x_grid] = w
+        gt[(3, 8), y_grid, x_grid] = h
+        gt[(4, 9), y_grid, x_grid] = c
+        gt[9 + obj, y_grid, x_grid] = 1
+    return gt
 
 
 class Transform(object):
@@ -163,15 +126,6 @@ class Transform(object):
             return x
 
 
-def pad_to_bboxes(batch):
-    max_n_bboxes = max([bboxes.shape[0] for _, bboxes in batch])
-    image_list, bboxes_list, = list(), list()
-    for image, bboxes in batch:
-        image_list.append(image)
-        bboxes_list.append(F.pad(bboxes, pad=(0, 0, 0, max_n_bboxes - bboxes.shape[0])))
-    return torch.stack(image_list), torch.stack(bboxes_list)
-
-
 class VOC2012Dataset(Dataset):
     def __init__(self, root, transform=None):
         super().__init__()
@@ -184,20 +138,24 @@ class VOC2012Dataset(Dataset):
     def __getitem__(self, idx):
         xml_path = list(Path(self.root).glob("*.xml"))[idx]
         img, bboxes = parse_voc2012_xml_file(xml_path)
+        gt = generate_ground_truth(img=img, bboxes=bboxes)
         image = _to_pil(img)
         if self.transform is not None:
             image = self.transform(image)
-        return image, bboxes
+        return image, gt
 
 
 if __name__ == "__main__":
     transform = Transform()
     ds = VOC2012Dataset(root="/Users/jongbeomkim/Downloads/VOCdevkit/VOC2012/Annotations", transform=transform)
     dl = DataLoader(dataset=ds, batch_size=8, shuffle=True, drop_last=True, collate_fn=pad_to_bboxes)
-    for batch, (image, bboxes) in enumerate(dl, start=1):
-        image.shape, bboxes.shape
-        bboxes[0]
+    for batch, (image, gt) in enumerate(dl, start=1):
+        image.shape, gt.shape
 
+        grid = batched_image_to_grid(image=image, n_cols=4, normalize=True)
+        show_image(grid)
+
+        
         darknet = Darknet()
         yolo = YOLO(darknet=darknet, n_classes=20)
         pred = yolo(image)

@@ -1,5 +1,8 @@
 # References
     # https://github.com/motokimura/yolo_v1_pytorch/blob/master/loss.py
+    # https://www.harrysprojects.com/articles/yolov1.html
+
+# For all predicted boxes that are not matched with a ground truth box, it is minimising the objectness confidence, but ignoring the box coordinates and class probabilities.
 
 import torch
 import torch.nn as nn
@@ -15,30 +18,12 @@ from PIL import Image
 
 
 from yolo import Darknet, YOLO
-from parepare_voc2012 import parse_voc2012_xml_file
+from parepare_voc2012 import Transform, VOC2012Dataset
+from process_images import (
+    resize_image
+)
 
 np.set_printoptions(precision=3, suppress=True)
-
-
-def resize_image(img, w, h):
-    resized_img = cv2.resize(src=img, dsize=(w, h))
-    return resized_img
-
-
-def draw_grids_and_bounding_boxes(img, bboxes, img_size=448, n_grids=7):
-    copied_img = img.copy()
-    for i in range(1, n_grids):
-        val = img_size // n_grids * i
-        cv2.line(img=copied_img, pt1=(val, 0), pt2=(val, img_size), color=(255, 0, 0), thickness=1)
-        cv2.line(img=copied_img, pt1=(0, val), pt2=(img_size, val), color=(255, 0, 0), thickness=1)
-
-    for tup in bboxes[["x1", "y1", "x2", "y2"]].itertuples():
-        _, x1, y1, x2, y2 = tup
-
-        cv2.rectangle(img=copied_img, pt1=(x1, y1), pt2=(x2, y2), color=(0, 255, 0), thickness=1)
-        cv2.line(img=copied_img, pt1=(x1, y1), pt2=(x2, y2), color=(0, 255, 0), thickness=1)
-        cv2.line(img=copied_img, pt1=(x1, y2), pt2=(x2, y1), color=(0, 255, 0), thickness=1)
-    return copied_img
 
 
 def tensor_to_array(image, mean=(0.485, 0.456, 0.406), variance=(0.229, 0.224, 0.225)):
@@ -50,10 +35,7 @@ def tensor_to_array(image, mean=(0.485, 0.456, 0.406), variance=(0.229, 0.224, 0
     return img
 
 
-def get_whether_each_predictor_responsible_for_prediction(pred, n_cells=7, n_bboxes=2, n_classes=20):
-    # is_resp = torch.stack([gt[:, 4, ...], gt[:, 9, ...]], dim=1)
-    # return is_resp
-
+def get_whether_each_predictor_is_responsible(pred, n_cells=7, n_bboxes=2, n_classes=20):
     b, _, _, _ = pred.shape
     confs = pred[:, (4, 9), ...]
     argmax = torch.argmax(confs, dim=1)
@@ -72,16 +54,24 @@ def get_whether_object_appear_in_each_cell(is_resp):
 
 
 class Yolov1Loss(nn.Module):
-    def __init__(self, lamb_coord=5, lamb_noobj = 0.5):
+    def __init__(self, lamb_coord=5, lamb_noobj=0.5):
         super().__init__()
 
         self.lambd_coord = lamb_coord
         self.lambd_noobj = lamb_noobj
     
     def forward(self, gt, pred):
+        gt.shape
+        gt[0, 4, ...]
+        # gt[:, 4, ...] # $1^{obj}_{i, 0}$
+        # gt[:, 9, ...] # $1^{obj}_{i, 1}$
+        gt[:, 0, ...] * gt[:, 4, ...]
+
+
         mse = F.mse_loss(gt, pred, reduction="none")
 
-        is_resp = get_whether_each_predictor_responsible_for_prediction(gt) # $1^{obj}_{ij}$
+        is_resp = get_whether_each_predictor_is_responsible(gt) # $1^{obj}_{ij}$
+        is_resp.shape
         mse[:, : 4, ...] *= is_resp[:, 0, ...] * self.lamb_coord
         mse[:, 5: 9, ...] *= is_resp[:, 1, ...] * self.lamb_coord
 
@@ -111,20 +101,14 @@ class Yolov1Loss(nn.Module):
 
 
 if __name__ == "__main__":
-    bboxes = parse_voc2012_xml_file("/Users/jongbeomkim/Downloads/VOCdevkit/VOC2012/Annotations/2007_000032.xml")
-    bboxes = normalize_bounding_boxes_coordinats(bboxes)
-    gt = get_ground_truth(bboxes)
-    gt = gt[None, ...]
+    darknet = Darknet()
+    yolo = YOLO(darknet=darknet, n_classes=20)
 
-    img = load_image("/Users/jongbeomkim/Downloads/VOCdevkit/VOC2012/JPEGImages/2007_000032.jpg")
-    h, w, _ = img.shape
-    
+    criterion = Yolov1Loss()
+
     transform = Transform()
-    ds = VOC2012Dataset(root="/Users/jongbeomkim/Downloads/VOCdevkit/VOC2012/JPEGImages", transform=transform)
+    ds = VOC2012Dataset(root="/Users/jongbeomkim/Downloads/VOCdevkit/VOC2012/Annotations", transform=transform)
     dl = DataLoader(dataset=ds, batch_size=8, shuffle=True, drop_last=True)
-    for batch, image in enumerate(dl, start=1):
-        image.shape
-
-        darknet = Darknet()
-        yolo = YOLO(darknet=darknet, n_classes=20)
+    for batch, (image, gt) in enumerate(dl, start=1):
         pred = yolo(image)
+        
