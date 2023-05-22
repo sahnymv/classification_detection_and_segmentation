@@ -126,6 +126,7 @@ class Transform(object):
 class VOC2012Dataset(Dataset):
     def __init__(self, root, transform=None):
         super().__init__()
+
         self.root = root
         self.transform = transform
 
