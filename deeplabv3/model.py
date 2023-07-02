@@ -1,4 +1,4 @@
-# Reference
+# References:
     # https://github.com/pytorch/vision/blob/main/torchvision/models/segmentation/deeplabv3.py
     # https://github.com/giovanniguidi/deeplabV3-PyTorch/tree/master/models
 
